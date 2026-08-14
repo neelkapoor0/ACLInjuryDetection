@@ -1,6 +1,7 @@
+matplotlib
 numpy
 pandas
+redivis
 scikit-image
-matplotlib
-tensorflow
 scikit-learn
+tensorflow

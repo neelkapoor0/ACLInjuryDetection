@@ -2,3 +2,7 @@
 venv/
 *.pck
 archive/
+*.npy
+.cache
+cache/
+*.npz
