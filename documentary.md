@@ -37,3 +37,11 @@
   * Kept per-model classification reports.
   * Kept unified comparison table (accuracy / precision / recall / F1).
   * Kept side-by-side and individual confusion matrix plots.
+
+* **Model comparison:**
+```
+     model  accuracy  precision   recall  f1_score
+   SGD-SVM  0.621849   0.588235 0.555556  0.571429
+SGD-LogReg  0.605042   0.555556 0.648148  0.598291
+       CNN  0.714286   0.651515 0.796296  0.716667
+```
