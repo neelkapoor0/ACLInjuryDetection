@@ -70,6 +70,10 @@ SGD-LogReg  0.605042   0.555556 0.648148  0.598291
   * SGD-LogReg: 0.680 ± 0.022
   * CNN: 0.685 ± 0.047
 
+**What training looked like:**
+
+![alt text](image.png)
+
 **Results — out-of-fold, all folds combined:**
 
 *SGD-SVM classification report*
