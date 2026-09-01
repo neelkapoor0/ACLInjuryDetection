@@ -1,4 +1,6 @@
 matplotlib
+nbconvert
+nbformat
 numpy
 pandas
 redivis
