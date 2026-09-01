@@ -156,10 +156,6 @@ SGD-LogReg  0.605042   0.555556 0.648148  0.598291
 | Logistic Regression | Sagittal | 0.680 ± 0.047 | 0.581 | 0.580 |
 | CNN | Sagittal | 0.689 ± 0.064 | 0.648 | 0.644 |
 
-**CNN training curves (tuned hyperparameters, per view):**
-
-![alt text](image_multiview_cnn_curves.png)
-
 * **Findings:**
   * Best combination: **CNN — Axial** (CV accuracy 0.706, test accuracy 0.657, test F1 0.655) — the strongest result across all 9 combinations, on both CV and the untouched test set, though modestly lower than the earlier tuned-epoch run (test accuracy 0.686) since epochs are now fixed at 8 rather than allowed up to 20.
   * Best model by mean test accuracy across views: **CNN** (0.625), ahead of LogReg (0.597) and SVM (0.562).
