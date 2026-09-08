@@ -1,259 +1,144 @@
 ### 08/11/2026
 
-* **Dataset Setup & Challenges (RSNA Knee):**
-  * Downloaded RSNA 3D knee MRI data (~24,000+ slices, ~4,407 studies).
-  * Early deletion/cleanup loops failed due to index-shift and null-handling issues (`IndexError`, `NaN` edge cases).
-  * Manual expert ACL labels were limited (58 total studies: 34 intact, 24 torn), with no strong isolated ACL-tear subset.
-  * Soft-label thresholding (`pseudo_ACL > 0.5`) produced severe imbalance (4,383 intact vs. 24 torn), making training unstable.
+- **Dataset Setup & Challenges:**
+  - Initially used RSNA 3D knee MRI data (~24,000+ slices, ~4,407 studies).
+  - ACL labels were limited to 58 studies (34 intact, 24 torn).
+  - Soft-label filtering produced extreme imbalance (4,383 intact vs. 24 torn), making training unreliable.
 
-* **Pivot to Stanford MRNet:**
-  * Switched from noisy pseudo-labeling to Stanford MRNet for cleaner supervised ACL targets.
-  * Added MRNet-aligned image assets and metadata workflows to the project.
-  * Began Redivis-based integration for split tables and ACL labels.
+- **Pivot to Stanford MRNet:**
+  - Switched to Stanford MRNet for cleaner, supervised ACL labels.
+  - Began integrating MRNet MRI data and ACL label metadata.
 
 ### 08/14/2026
 
-* **Redivis Pipeline Stabilization:**
-  * Updated MRNet loading to the current Redivis API pattern (`table.file(...).download(...)`).
-  * Downloaded split metadata (`train`, `valid`) and ACL label tables (`train-acl`, `valid-acl`) into local project storage.
-  * Implemented split-wise filtering by case ID so only files referenced by split ACL labels are retained.
-  * Added safe preview mode for cleanup (`DELETE = False`) before destructive removal (`DELETE = True`).
+- **Data Pipeline:**
+  - Set up automated MRNet downloading and case-ID filtering.
+  - Standardized ACL classification as binary: normal vs. torn.
+  - Added preprocessing and caching for faster experiments.
 
-* **Notebook Pipeline Update (ACL, Sagittal):**
-  * Standardized training/evaluation on MRNet `train/valid` sagittal `.npy` volumes.
-  * Added robust label loading (`case_id -> binary ACL label`) with flexible column inference.
-  * Cached preprocessing outputs to `cache/preprocessed_*_sagittal.npz` for faster reruns.
+- **Initial Model Results:**
 
-* **Imbalance Handling:**
-  * Added inverse-frequency class weighting for HOG models (via `sample_weight` in `SGDClassifier.partial_fit`).
-  * Added inverse-frequency class weighting for CNN training (`class_weight` in `model.fit`).
+| Model | Accuracy | Precision | Recall | F1 |
+|---|---:|---:|---:|---:|
+| SGD-SVM | 0.622 | 0.588 | 0.556 | 0.571 |
+| SGD-LogReg | 0.605 | 0.556 | 0.648 | 0.598 |
+| CNN | **0.714** | **0.652** | **0.796** | **0.717** |
 
-* **CNN Simplification (Binary Setup):**
-  * Replaced 2-logit softmax head with a 1-unit sigmoid output layer.
-  * Switched loss to `binary_crossentropy`.
-  * Switched prediction step from `argmax` to thresholding (`p >= 0.5`).
-
-* **Reporting:**
-  * Kept per-model classification reports.
-  * Kept unified comparison table (accuracy / precision / recall / F1).
-  * Kept side-by-side and individual confusion matrix plots.
-
-* **Model comparison:**
-```
-     model  accuracy  precision   recall  f1_score
-   SGD-SVM  0.621849   0.588235 0.555556  0.571429
-SGD-LogReg  0.605042   0.555556 0.648148  0.598291
-       CNN  0.714286   0.651515 0.796296  0.716667
-```
+- CNN performed best in the initial experiment.
 
 ### 08/24/2026
 
-* **Reproducible, unbiased splits:**
-  * Replaced the fixed train/test split with a pooled shuffle — every run now pools all available images and draws a fresh random 80% train / 20% test split, giving a more honest, less "lucky" read on generalization.
+- **Model Improvements:**
+  - Fixed issues that prevented the CNN, SVM, and Logistic Regression models from learning effectively.
+  - Added model-specific training settings.
+  - Added hyperparameter tuning.
+  - Added 5-fold cross-validation.
 
-* **CNN training bug (image model was learning nothing):**
-  * Diagnosed a layer that was collapsing almost all useful information out of each image before the model could use it — the CNN was effectively guessing (~coin-flip predictions) while appearing to train normally.
-  * Removed the offending step so the model can actually learn from image features.
+- **5-Fold Results:**
 
-* **SVM / Logistic Regression training bug (frozen accuracy):**
-  * Found both simpler models were sharing a single learning-rate setting with the CNN, sized far too small for them, which made their accuracy look flat across training.
-  * Gave each model its own properly-scaled learning rate — both now show real improvement (and eventual overfitting) during training, as expected.
+| Model | Mean Accuracy | Std. Dev. |
+|---|---:|---:|
+| SGD-SVM | 0.645 | 0.050 |
+| SGD-LogReg | 0.680 | 0.022 |
+| CNN | **0.685** | 0.047 |
 
-* **Proper hyperparameter tuning:**
-  * Swept a range of settings per model (learning rate, training rounds, etc.) and scored each combination with k-fold cross-validation, keeping the best-performing combination per model.
+- **Out-of-Fold Results:**
 
-* **Added k-fold cross-validation:**
-  * Replaced single train/test evaluation with 5-fold CV — data is split into 5 groups, each model is trained and tested 5 times (holding out a different group each time), and results are aggregated across all 5 for a more reliable performance estimate.
-
-* **Results (5-fold CV, mean ± std accuracy):**
-  * SGD-SVM: 0.645 ± 0.050
-  * SGD-LogReg: 0.680 ± 0.022
-  * CNN: 0.685 ± 0.047
-
-**What training looked like:**
-
-![alt text](image.png)
-
-**Results — out-of-fold, all folds combined:**
-
-*SGD-SVM classification report*
-
-| | Precision | Recall | F1-score | Support |
-|---|---|---|---|---|
-| Normal | 0.64 | 0.65 | 0.65 | 200 |
-| Torn | 0.65 | 0.64 | 0.64 | 200 |
-| **Accuracy** | | | **0.65** | 400 |
-| Macro avg | 0.65 | 0.65 | 0.64 | 400 |
-| Weighted avg | 0.65 | 0.65 | 0.64 | 400 |
-
-*SGD-SVM confusion matrix (rows=true, cols=predicted)*
-
-| | Pred: Normal | Pred: Torn |
-|---|---|---|
-| **True: Normal** | 130 | 70 |
-| **True: Torn** | 72 | 128 |
-
-*SGD-LogReg classification report*
-
-| | Precision | Recall | F1-score | Support |
-|---|---|---|---|---|
-| Normal | 0.68 | 0.68 | 0.68 | 200 |
-| Torn | 0.68 | 0.68 | 0.68 | 200 |
-| **Accuracy** | | | **0.68** | 400 |
-| Macro avg | 0.68 | 0.68 | 0.68 | 400 |
-| Weighted avg | 0.68 | 0.68 | 0.68 | 400 |
-
-*SGD-LogReg confusion matrix (rows=true, cols=predicted)*
-
-| | Pred: Normal | Pred: Torn |
-|---|---|---|
-| **True: Normal** | 136 | 64 |
-| **True: Torn** | 64 | 136 |
-
-*CNN classification report*
-
-| | Precision | Recall | F1-score | Support |
-|---|---|---|---|---|
-| Normal | 0.70 | 0.64 | 0.67 | 200 |
-| Torn | 0.67 | 0.73 | 0.70 | 200 |
-| **Accuracy** | | | **0.69** | 400 |
-| Macro avg | 0.69 | 0.69 | 0.68 | 400 |
-| Weighted avg | 0.69 | 0.69 | 0.68 | 400 |
-
-*CNN confusion matrix (rows=true, cols=predicted)*
-
-| | Pred: Normal | Pred: Torn |
-|---|---|---|
-| **True: Normal** | 128 | 72 |
-| **True: Torn** | 54 | 146 |
+| Model | Accuracy | Normal F1 | Torn F1 |
+|---|---:|---:|---:|
+| SGD-SVM | 0.65 | 0.65 | 0.64 |
+| SGD-LogReg | 0.68 | 0.68 | 0.68 |
+| CNN | **0.69** | 0.67 | **0.70** |
 
 ### 08/31/2026
 
-* **Reintroduced class balancing:**
-  * The natural dataset is imbalanced (~79% Normal / 21% Torn), and a same-day run without any balancing produced degenerate results on the coronal view (SVM/CNN both collapsed to always predicting "Normal"). Reintroduced case-level class balancing — undersampling Normal down to match the Torn count (262 cases each, 524 pooled total) — before the train/test split, so the balanced ratio is preserved through the split, the inner tuning holdout, and every CV fold.
-  * Preprocessing is otherwise unchanged: raw center-slice MRI pixels only (resize to 64×64, normalize to [0,1]), no HOG or other feature engineering.
+- **Class Balancing:**
+  - Balanced the training data because the natural dataset was approximately 79% Normal / 21% Torn.
+  - Undersampled the Normal class to match the Torn class.
 
-* **Final optimized hyperparameters:**
-  * SVM — Axial `C=10, rbf, gamma=0.01` · Coronal `C=1, rbf, gamma=auto` · Sagittal `C=0.1, linear`. LogReg — Axial `C=1, lbfgs` · Coronal `C=0.1, lbfgs` · Sagittal `C=0.1, liblinear`. CNN — Axial `lr=1e-3, epochs=8` · Coronal `lr=1e-4, epochs=8` · Sagittal `lr=1e-4, epochs=8` (epochs fixed at 8 for all views; SVM now tunes gamma alongside C/kernel).
-  * All 9 final models (refit on the full 80% train pool) saved to `optimized_models/` (not committed to git).
+- **Preprocessing:**
+  - Used raw MRI pixel data only.
+  - Center slice resized to 64×64 grayscale and normalized to [0,1].
+  - No HOG or additional feature engineering.
 
-* **Results (10-fold CV over the 80% train pool, mean ± std accuracy, vs. final evaluation on the untouched 20% test set):**
+- **Model Expansion:**
+  - Tested 3 models across all 3 MRI views:
+    - SVM
+    - Logistic Regression
+    - CNN
+  - Tuned each model separately for each view.
+  - Saved all 9 optimized models.
 
-| Model | View | CV Accuracy | Test Accuracy | Test F1 |
-|---|---|---:|---:|---:|
-| SVM | Axial | 0.719 ± 0.057 | 0.676 | 0.676 |
-| Logistic Regression | Axial | 0.666 ± 0.048 | 0.629 | 0.628 |
-| CNN | Axial | 0.706 ± 0.051 | 0.657 | 0.655 |
-| SVM | Coronal | 0.555 ± 0.050 | 0.514 | 0.503 |
-| Logistic Regression | Coronal | 0.556 ± 0.067 | 0.581 | 0.581 |
-| CNN | Coronal | 0.595 ± 0.039 | 0.571 | 0.571 |
-| SVM | Sagittal | 0.643 ± 0.033 | 0.581 | 0.581 |
-| Logistic Regression | Sagittal | 0.680 ± 0.047 | 0.581 | 0.580 |
-| CNN | Sagittal | 0.689 ± 0.064 | 0.648 | 0.644 |
+- **10-Fold Results:**
 
-* **Findings:**
-  * Best combination: **SVM — Axial** (CV accuracy 0.719, test accuracy 0.676, test F1 0.676) — narrowly ahead of CNN — Axial (0.657), after fixing a bug where `gamma` had been dropped from the SVM grid (below).
-  * Best model by mean test accuracy: **CNN** (0.625), ahead of LogReg (0.597) and SVM (0.590) — SVM has the single best combo but its weak Coronal result drags its average down.
-  * Best view by mean test accuracy: **Axial** (0.654), ahead of Sagittal (0.603) and Coronal (0.555, still weakest).
-  * **Fixed SVM — Coronal's majority-class collapse:** it was predicting "Torn" for every test case (0.495 accuracy = the test set's Torn proportion, 0.00 precision/recall on Normal). Root cause: `gamma` had been dropped from `SVM_GRID` during an earlier simplification.
-  * Sagittal shows the largest CV-vs-test gap (LogReg 0.099, SVM 0.061) — real overfitting signal on that view, unrelated to the SVM fix.
-  * LogReg is byte-identical to the previous run (untouched, fully deterministic) — confirmed via the verification cell below.
-  * Balancing removed an earlier majority-class-collapse failure mode too, at the cost of roughly halving the usable dataset (1248 → 524 pooled cases) — a real data-volume tradeoff, not a free improvement.
+| Model | View | Test Accuracy | Test F1 |
+|---|---|---:|---:|
+| SVM | Axial | **0.676** | **0.676** |
+| LogReg | Axial | 0.629 | 0.628 |
+| CNN | Axial | 0.657 | 0.655 |
+| SVM | Coronal | 0.514 | 0.503 |
+| LogReg | Coronal | 0.581 | 0.581 |
+| CNN | Coronal | 0.571 | 0.571 |
+| SVM | Sagittal | 0.581 | 0.581 |
+| LogReg | Sagittal | 0.581 | 0.580 |
+| CNN | Sagittal | 0.648 | 0.644 |
 
-* **Fixed CNN epochs to 8:**
-  * Simplified the CNN hyperparameter grid to fix `epochs=8` for every view (previously tuned over {10, 20}), leaving learning rate as the only tuned CNN hyperparameter. Applied consistently everywhere CNN training happens — tuning, training-curve plot, 10-fold CV, and the final saved model — so there's no mismatch between what was tuned and what was deployed.
+- **Key Findings:**
+  - Best individual model: **Axial SVM** (67.6% test accuracy, 67.6% F1).
+  - Best MRI view: **Axial** (65.4% average test accuracy).
+  - Coronal was consistently the weakest view.
+  - CNN performed particularly well on sagittal images (64.8% test accuracy, 64.4% F1).
+  - The best cross-validation result was the Axial SVM at **71.9% ± 5.7%**.
+  - Sagittal models showed noticeable CV-to-test performance drops, suggesting some overfitting.
+  - Fixed a bug in the SVM hyperparameter search where `gamma` had previously been omitted.
+  - Fixed CNN training to consistently use 8 epochs across tuning, CV, and final training.
+  - Verified that reloaded saved models reproduce the original test results exactly.
 
-* **Added a model-reload verification cell:**
-  * New final cell reloads each of the 9 saved models directly from `optimized_models/` (not the in-memory objects from training) and re-evaluates them on the untouched 20% test set, asserting the reloaded predictions reproduce the exact `test_accuracy`/`test_precision`/`test_recall`/`test_f1` already in `results_df` — confirms the saved artifacts are trustworthy for later reuse. Also prints a full classification report per combo, reproduced below.
+### 09/07/2026
 
-**Classification reports (reloaded models, evaluated once on the untouched 20% test set):**
+- **Dataset Validation:**
+  - Removed class balancing to preserve the natural training distribution.
+  - Verified that only labeled cases are included and that axial, coronal, and sagittal views contain matching case IDs.
+  - Dropped the Stanford `valid_acl_labels.csv`/`StanfordMRNet/valid` split entirely — it's no longer read anywhere in the pipeline. `main.ipynb` now loads only `train_acl_labels.csv`/`StanfordMRNet/train`, and carves its own stratified case-level 80/20 train/test split out of that single pool (`random_state=SEED`), with the inner tuning split further carved from the 80% train side.
 
-*SVM — Axial*
+- **Final Dataset (train-only pool, self-split 80/20):**
 
-| | Precision | Recall | F1-score | Support |
-|---|---|---|---|---|
-| Normal | 0.68 | 0.68 | 0.68 | 53 |
-| Torn | 0.67 | 0.67 | 0.67 | 52 |
-| **Accuracy** | | | **0.68** | 105 |
-| Macro avg | 0.68 | 0.68 | 0.68 | 105 |
-| Weighted avg | 0.68 | 0.68 | 0.68 | 105 |
+| Split | Normal | Torn | Total |
+|---|---:|---:|---:|
+| Train | 738 | 166 | 904 |
+| Test | 184 | 42 | 226 |
+| Inner Train | 590 | 133 | 723 |
+| Inner Holdout | 148 | 33 | 181 |
 
-*Logistic Regression — Axial*
+- All 1,130 labeled cases in `train_acl_labels.csv` have a matching MRI file for every view, so nothing is excluded.
+- No unlabeled MRI images are included.
+- No class balancing, oversampling, or undersampling is used on the dataset itself.
 
-| | Precision | Recall | F1-score | Support |
-|---|---|---|---|---|
-| Normal | 0.63 | 0.64 | 0.64 | 53 |
-| Torn | 0.63 | 0.62 | 0.62 | 52 |
-| **Accuracy** | | | **0.63** | 105 |
-| Macro avg | 0.63 | 0.63 | 0.63 | 105 |
-| Weighted avg | 0.63 | 0.63 | 0.63 | 105 |
+- **Pipeline & Imbalance Handling Rework:**
+  - Replaced case-level undersampling (which had thrown away over half the data to force a 50/50 split) with `class_weight="balanced"` instead, so SVM, Logistic Regression, and CNN now train on the full, naturally-imbalanced pool (~82% Normal / 18% Torn) and compensate via per-class loss weighting rather than dropping data.
+  - Added a `StandardScaler` step before SVM and Logistic Regression (`sklearn.pipeline.make_pipeline`), since raw flattened pixel features were previously fed in unscaled.
+  - CNN now computes fold-specific and final `class_weight` via `sklearn.utils.class_weight.compute_class_weight("balanced", ...)` instead of training unweighted.
+  - Model/view selection now uses CV metrics only — the test set is no longer looked at when picking the best combo (previously the writeup also reported "best combo by test F1", which peeks at the held-out set).
+  - Simplified the Redivis download cell (removed unused label-inference helpers; case filtering now reads the headerless CSVs directly).
 
-*CNN — Axial*
+- **10-Fold CV Results (train-only 80/20 split, class-weighted):**
 
-| | Precision | Recall | F1-score | Support |
-|---|---|---|---|---|
-| Normal | 0.64 | 0.74 | 0.68 | 53 |
-| Torn | 0.68 | 0.58 | 0.62 | 52 |
-| **Accuracy** | | | **0.66** | 105 |
-| Macro avg | 0.66 | 0.66 | 0.65 | 105 |
-| Weighted avg | 0.66 | 0.66 | 0.65 | 105 |
+| Model | View | CV Accuracy | CV F1 | Test Accuracy | Test F1 |
+|---|---|---:|---:|---:|---:|
+| SVM | Axial | 0.537 | 0.502 | 0.535 | 0.508 |
+| LogReg | Axial | 0.759 | 0.590 | **0.783** | 0.638 |
+| CNN | Axial | 0.683 | 0.619 | 0.717 | 0.654 |
+| SVM | Coronal | 0.480 | 0.441 | 0.323 | 0.323 |
+| LogReg | Coronal | 0.722 | 0.550 | 0.637 | 0.474 |
+| CNN | Coronal | 0.551 | 0.490 | 0.535 | 0.494 |
+| SVM | Sagittal | **0.812** | 0.634 | 0.792 | 0.640 |
+| LogReg | Sagittal | 0.785 | 0.642 | 0.748 | 0.608 |
+| CNN | Sagittal | 0.725 | **0.645** | 0.690 | 0.629 |
 
-*SVM — Coronal*
-
-| | Precision | Recall | F1-score | Support |
-|---|---|---|---|---|
-| Normal | 0.53 | 0.36 | 0.43 | 53 |
-| Torn | 0.51 | 0.67 | 0.58 | 52 |
-| **Accuracy** | | | **0.51** | 105 |
-| Macro avg | 0.52 | 0.52 | 0.50 | 105 |
-| Weighted avg | 0.52 | 0.51 | 0.50 | 105 |
-
-*Logistic Regression — Coronal*
-
-| | Precision | Recall | F1-score | Support |
-|---|---|---|---|---|
-| Normal | 0.59 | 0.55 | 0.57 | 53 |
-| Torn | 0.57 | 0.62 | 0.59 | 52 |
-| **Accuracy** | | | **0.58** | 105 |
-| Macro avg | 0.58 | 0.58 | 0.58 | 105 |
-| Weighted avg | 0.58 | 0.58 | 0.58 | 105 |
-
-*CNN — Coronal*
-
-| | Precision | Recall | F1-score | Support |
-|---|---|---|---|---|
-| Normal | 0.57 | 0.58 | 0.58 | 53 |
-| Torn | 0.57 | 0.56 | 0.56 | 52 |
-| **Accuracy** | | | **0.57** | 105 |
-| Macro avg | 0.57 | 0.57 | 0.57 | 105 |
-| Weighted avg | 0.57 | 0.57 | 0.57 | 105 |
-
-*SVM — Sagittal*
-
-| | Precision | Recall | F1-score | Support |
-|---|---|---|---|---|
-| Normal | 0.59 | 0.55 | 0.57 | 53 |
-| Torn | 0.57 | 0.62 | 0.59 | 52 |
-| **Accuracy** | | | **0.58** | 105 |
-| Macro avg | 0.58 | 0.58 | 0.58 | 105 |
-| Weighted avg | 0.58 | 0.58 | 0.58 | 105 |
-
-*Logistic Regression — Sagittal*
-
-| | Precision | Recall | F1-score | Support |
-|---|---|---|---|---|
-| Normal | 0.60 | 0.53 | 0.56 | 53 |
-| Torn | 0.57 | 0.63 | 0.60 | 52 |
-| **Accuracy** | | | **0.58** | 105 |
-| Macro avg | 0.58 | 0.58 | 0.58 | 105 |
-| Weighted avg | 0.58 | 0.58 | 0.58 | 105 |
-
-*CNN — Sagittal*
-
-| | Precision | Recall | F1-score | Support |
-|---|---|---|---|---|
-| Normal | 0.69 | 0.55 | 0.61 | 53 |
-| Torn | 0.62 | 0.75 | 0.68 | 52 |
-| **Accuracy** | | | **0.65** | 105 |
-| Macro avg | 0.65 | 0.65 | 0.64 | 105 |
-| Weighted avg | 0.66 | 0.65 | 0.64 | 105 |
+- **Key Findings:**
+  - Best combo by CV F1 (CV-only selection): **CNN — Sagittal** (CV accuracy 0.725, CV F1 0.645); test result was 0.690 accuracy / 0.629 F1.
+  - Best model by mean CV accuracy: **Logistic Regression**. Best view by mean CV accuracy: **Sagittal**.
+  - Least stable across folds: **SVM — Coronal** (fold accuracy std 0.208) — Coronal remains the weakest, most volatile view.
+  - Scaling features before SVM/LogReg and switching to `class_weight="balanced"` avoided the earlier majority-class collapse (seen 08/31 on Coronal) without discarding any data.
+  - Verified all 9 reloaded models from `optimized_models/` reproduce their reported test accuracy exactly.
+  - Not directly comparable to 08/31's undersampled results: the pool size, class ratio, and test-set source all changed at once.
