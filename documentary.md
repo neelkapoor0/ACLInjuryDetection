@@ -142,3 +142,41 @@
   - Scaling features before SVM/LogReg and switching to `class_weight="balanced"` avoided the earlier majority-class collapse (seen 08/31 on Coronal) without discarding any data.
   - Verified all 9 reloaded models from `optimized_models/` reproduce their reported test accuracy exactly.
   - Not directly comparable to 08/31's undersampled results: the pool size, class ratio, and test-set source all changed at once.
+### 09/20/2026
+
+- **Evaluation Change (CV-only):**
+  - Removed all test-set metrics from `main.ipynb`. No model is scored on the held-out test cases anymore.
+  - All reported numbers are 10-fold stratified CV (out-of-fold) on the same 904-case train pool as 09/07, macro-averaged: accuracy, F1, precision, recall.
+  - Model/view selection still uses CV only.
+  - Models, hyperparameters, class weighting (`class_weight="balanced"`), 8 epochs and batch size 16 are unchanged from 09/07. All models were retrained in a fresh run.
+
+- **10-Fold CV Results (904-case train pool, class-weighted):**
+
+| Model | View | Accuracy | F1 | Precision | Recall |
+|---|---|---:|---:|---:|---:|
+| SVM | Axial | 0.537 | 0.502 | 0.570 | 0.616 |
+| LogReg | Axial | 0.759 | 0.590 | 0.592 | 0.589 |
+| CNN | Axial | 0.683 | 0.619 | 0.629 | 0.708 |
+| SVM | Coronal | 0.480 | 0.441 | 0.514 | 0.523 |
+| LogReg | Coronal | 0.722 | 0.550 | 0.549 | 0.552 |
+| CNN | Coronal | 0.551 | 0.490 | 0.533 | 0.555 |
+| SVM | Sagittal | **0.812** | 0.634 | **0.669** | 0.619 |
+| LogReg | Sagittal | 0.785 | 0.642 | 0.642 | 0.642 |
+| CNN | Sagittal | 0.725 | **0.645** | 0.639 | **0.710** |
+
+- **CNN Training Curves (training loss + training F1, final fit on the 904-case train pool, before CV):**
+
+![CNN training loss and F1 per epoch](cnn_training_curves.png)
+
+  - Training loss falls steadily over the 8 epochs for all views: Axial ≈ 0.70 → 0.54, Sagittal ≈ 0.70 → 0.57, Coronal ≈ 0.70 → 0.66.
+  - Training F1 (macro, computed on the full 904-case train pool at the end of each epoch) ends at ≈ 0.70 for Axial and Sagittal and ≈ 0.51 for Coronal.
+  - Coronal barely learns (loss nearly flat, training F1 ≈ 0.51 at epoch 8), which matches its weak CV result (0.551 accuracy / 0.490 F1).
+  - Axial's training F1 is noisy early on (≈ 0.69 at epoch 3, dipping to ≈ 0.55 at epoch 4) because of the class-weighted loss. All views are still improving at epoch 8.
+  - Curve values for F1 and loss were read from the plot, not logged to a file.
+
+- **Key Findings:**
+  - Best combo by CV F1: **CNN — Sagittal** (accuracy 0.725, F1 0.645, recall 0.710).
+  - Best model by mean CV accuracy: **Logistic Regression**. Best view by mean CV accuracy: **Sagittal**.
+  - SVM — Sagittal has the highest accuracy (0.812), but this is about the majority-class rate (738 / 904 = 0.816 are Normal), and its F1 (0.634) is below the CNN's. Accuracy alone overstates it.
+  - Least stable across folds: **SVM — Coronal** (fold accuracy std 0.208).
+  - Sagittal is the best view for all three models on F1.
