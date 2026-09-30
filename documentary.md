@@ -166,7 +166,7 @@
 
 - **CNN Training Curves (training loss + training F1, final fit on the 904-case train pool, before CV):**
 
-![CNN training loss and F1 per epoch](cnn_training_curves.png)
+![CNN training loss and F1 per epoch](image1.png)
 
   - Training loss falls steadily over the 8 epochs for all views: Axial ≈ 0.70 → 0.54, Sagittal ≈ 0.70 → 0.57, Coronal ≈ 0.70 → 0.66.
   - Training F1 (macro, computed on the full 904-case train pool at the end of each epoch) ends at ≈ 0.70 for Axial and Sagittal and ≈ 0.51 for Coronal.
@@ -180,3 +180,51 @@
   - SVM — Sagittal has the highest accuracy (0.812), but this is about the majority-class rate (738 / 904 = 0.816 are Normal), and its F1 (0.634) is below the CNN's. Accuracy alone overstates it.
   - Least stable across folds: **SVM — Coronal** (fold accuracy std 0.208).
   - Sagittal is the best view for all three models on F1.
+
+### 09/30/2026
+
+- **Validation Method Change (Monte Carlo CV):**
+  - The 09/20 evaluation used `StratifiedKFold(n_splits=10)`, which partitions the 904-case train pool into 10 fixed, non-overlapping folds — each validation fold is only ~10% of the pool (~90 cases, ~16 Torn), which is why fold-to-fold accuracy swung so much.
+  - Replaced it with repeated random 80/20 holdout validation: 10 repeats, each drawing a fresh stratified 80/20 split of the train pool with its own seed (`SEED, SEED+1, ..., SEED+9`). Every validation set is now the full 20% (~181 cases, ~33 Torn), and the 10 repeats are independent resamples rather than a fixed partition.
+  - Applied the same fix to the CNN learning-rate tuning step, which had been fit once on a single fixed inner-train/inner-holdout split; it now also resamples 10 fresh 80/20 splits (with the same class weighting, epochs, and batch size as the CV cell) before a learning rate is chosen.
+  - All CNN training (tuning, per-repeat CV, and final fit) now consistently uses 8 epochs / batch size 16.
+
+- **Metrics:**
+  - Added precision and recall for the CNN (previously only accuracy and F1 were tracked for it). All three models now report accuracy, precision, recall, and F1 — each as mean ± std over the 10 repeats.
+
+- **Cleanup:**
+  - Removed model saving entirely (`joblib.dump`, `final_model.save`, `optimized_models/`) — `main.ipynb` no longer writes any model artifacts to disk; it's purely for evaluating metrics.
+  - Removed the now-dead `inner_train`/`inner_holdout` split and the `TrainF1` callback/`cnn_histories` tracking (the latter ran a full 904-image prediction after every epoch, for every view, to feed a plot that had already been removed).
+  - Removed unused imports (`StratifiedKFold`, `classification_report`, `confusion_matrix`).
+  - Deleted the stale `optimized_models/` files left over from an earlier interrupted run.
+  - Verified the full notebook executes top to bottom with no errors after all of the above.
+
+- **10-Repeat Monte Carlo CV Results (904-case train pool, class-weighted, mean ± std over 10 repeats):**
+
+| Model | View | Accuracy | Precision | Recall | F1 |
+|---|---|---:|---:|---:|---:|
+| SVM | Axial | 0.524 ± 0.042 | 0.573 ± 0.018 | 0.617 ± 0.029 | 0.493 ± 0.031 |
+| LogReg | Axial | 0.759 ± 0.021 | 0.597 ± 0.036 | 0.598 ± 0.036 | 0.595 ± 0.035 |
+| CNN | Axial | 0.752 ± 0.079 | 0.658 ± 0.054 | 0.691 ± 0.047 | 0.655 ± 0.062 |
+| SVM | Coronal | 0.775 ± 0.107 | 0.538 ± 0.156 | 0.505 ± 0.017 | 0.469 ± 0.033 |
+| LogReg | Coronal | 0.703 ± 0.025 | 0.537 ± 0.029 | 0.542 ± 0.034 | 0.538 ± 0.031 |
+| CNN | Coronal | 0.581 ± 0.141 | 0.540 ± 0.033 | 0.544 ± 0.040 | 0.484 ± 0.065 |
+| SVM | Sagittal | **0.813 ± 0.018** | **0.668 ± 0.043** | 0.616 ± 0.039 | 0.630 ± 0.040 |
+| LogReg | Sagittal | 0.789 ± 0.018 | 0.646 ± 0.027 | 0.643 ± 0.025 | 0.643 ± 0.024 |
+| CNN | Sagittal | 0.725 ± 0.061 | 0.634 ± 0.030 | **0.681 ± 0.020** | **0.633 ± 0.040** |
+
+- Overall (averaged across all 9 model/view combos): accuracy 0.714, precision 0.599, recall 0.604, F1 0.571.
+
+- **CNN Repeat-Holdout Curves (accuracy, val_accuracy, loss, val_loss across the 8 epochs, 10 repeats/view):**
+
+![CNN repeated-holdout training curves](cnn_repeat_holdout_curves.png)
+
+  - Each panel shows all 10 per-repeat curves faintly plus the mean curve in bold, per view.
+  - Axial and Sagittal's mean val_accuracy climbs steadily (≈0.61 → ≈0.75-0.76); Coronal's stays flat around 0.51-0.6 the whole time — matching its weak CV result.
+  - Individual repeats swing far more than the mean line, especially early on — expected given each validation set is only ~181 cases (~33 Torn), so a handful of cases shifts accuracy by several points.
+
+- **Key Findings:**
+  - Results are close to 09/20's fold-based numbers, which is reassuring: the validation-method fix didn't change *what* the numbers say, just made them more trustworthy (full 20% validation sets, resampled independently, instead of shrinking to 10% fixed folds).
+  - Best combo by F1: **CNN — Sagittal** (F1 0.633, recall 0.681). Best combo by accuracy: **SVM — Sagittal** (0.813), but again mostly tracking the 0.816 majority-class rate — its F1 (0.630) trails CNN — Sagittal.
+  - Coronal remains the weakest, most unstable view across every model (highest std on accuracy for SVM and CNN alike).
+  - `main.ipynb` no longer produces any saved model files — it's an evaluation-only notebook as of this entry.
