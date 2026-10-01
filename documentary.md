@@ -183,7 +183,7 @@
 
 ### 09/30/2026
 
-- **Validation Method Change (Monte Carlo CV):**
+- **Validation Method Change:**
   - The 09/20 evaluation used `StratifiedKFold(n_splits=10)`, which partitions the 904-case train pool into 10 fixed, non-overlapping folds — each validation fold is only ~10% of the pool (~90 cases, ~16 Torn), which is why fold-to-fold accuracy swung so much.
   - Replaced it with repeated random 80/20 holdout validation: 10 repeats, each drawing a fresh stratified 80/20 split of the train pool with its own seed (`SEED, SEED+1, ..., SEED+9`). Every validation set is now the full 20% (~181 cases, ~33 Torn), and the 10 repeats are independent resamples rather than a fixed partition.
   - Applied the same fix to the CNN learning-rate tuning step, which had been fit once on a single fixed inner-train/inner-holdout split; it now also resamples 10 fresh 80/20 splits (with the same class weighting, epochs, and batch size as the CV cell) before a learning rate is chosen.
