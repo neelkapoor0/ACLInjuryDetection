@@ -199,7 +199,7 @@
   - Deleted the stale `optimized_models/` files left over from an earlier interrupted run.
   - Verified the full notebook executes top to bottom with no errors after all of the above.
 
-- **10-Repeat Monte Carlo CV Results (904-case train pool, class-weighted, mean ± std over 10 repeats):**
+- ** Results (904-case train pool, class-weighted, mean ± std over 10 repeats):**
 
 | Model | View | Accuracy | Precision | Recall | F1 |
 |---|---|---:|---:|---:|---:|
