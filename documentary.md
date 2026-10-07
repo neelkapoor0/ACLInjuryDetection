@@ -228,3 +228,42 @@
   - Best combo by F1: **CNN — Sagittal** (F1 0.633, recall 0.681). Best combo by accuracy: **SVM — Sagittal** (0.813), but again mostly tracking the 0.816 majority-class rate — its F1 (0.630) trails CNN — Sagittal.
   - Coronal remains the weakest, most unstable view across every model (highest std on accuracy for SVM and CNN alike).
   - `main.ipynb` no longer produces any saved model files — it's an evaluation-only notebook as of this entry.
+
+
+### 10/06/2026
+
+- **Changes:**
+  - K Fold increased from 10 to **50 repeated stratified 80/20 holdouts**.
+  - Removed the CNN learning-rate tuning loop. All hyperparameters are now fixed constants in their own cell, set before data loading.
+  - Raw results are now saved to CSV: `cv_per_fold_results.csv` (per model/view/repeat) and `cnn_per_epoch_results.csv` (per CNN view/repeat/epoch).
+  - Added 12 focused CNN graphs (4 metrics × 3 views), each showing the best, median and worst run by F1.
+
+- **Why these hyperparameters:**
+  - **SVM C** (axial 0.5, coronal 1, sagittal 0.5): grid search over C = 0.05–30 using repeated holdouts, picked by F1. The old C = 0.1 made the model predict almost entirely one class.
+  - **LogReg C = 0.1**: carried over from the earlier tuning (08/24–09/07).
+  - **CNN learning rate** (axial 5e-4, coronal/sagittal 1e-4): confirmed with 500 repeated holdouts per view before the tuning loop was removed (final val accuracy: axial 0.738, coronal 0.573, sagittal 0.734).
+  - **CNN 8 epochs / batch 16**: kept the same since 08/31 so results stay comparable.
+
+- **50-Repeat CV Results (mean ± std):**
+
+| Model | View | Accuracy | Precision | Recall | F1 |
+|---|---|---:|---:|---:|---:|
+| SVM | Axial | 0.743 ± 0.028 | 0.617 | 0.648 | 0.624 ± 0.032 |
+| LogReg | Axial | 0.764 ± 0.028 | 0.603 | 0.600 | 0.600 ± 0.041 |
+| CNN | Axial | 0.744 ± 0.062 | 0.640 | 0.680 | 0.639 ± 0.056 |
+| SVM | Coronal | 0.744 ± 0.029 | 0.560 | 0.556 | 0.557 ± 0.039 |
+| LogReg | Coronal | 0.705 ± 0.022 | 0.535 | 0.540 | 0.536 ± 0.031 |
+| CNN | Coronal | 0.563 ± 0.116 | 0.539 | 0.552 | 0.484 ± 0.062 |
+| SVM | Sagittal | 0.785 ± 0.025 | 0.645 | 0.649 | **0.645 ± 0.037** |
+| LogReg | Sagittal | **0.791 ± 0.024** | **0.647** | 0.641 | 0.643 ± 0.041 |
+| CNN | Sagittal | 0.723 ± 0.067 | 0.635 | **0.685** | 0.632 ± 0.045 |
+
+![CNN repeated-holdout training curves](cnn_repeat_holdout_curves.png)
+
+![CNN focused runs: best, median, worst per view](cnn_focus_runs_curves.png)
+
+- **Key Findings:**
+  - Sagittal SVM, Sagittal LogReg and Axial CNN are effectively tied on F1 (0.645 / 0.643 / 0.639). Sagittal is still the best view and coronal the worst.
+  - The new SVM C values fixed the one-class predictions: Axial F1 went from 0.493 to 0.624 and Coronal from 0.469 to 0.557.
+  - CNN results vary 2–4× more across repeats than SVM/LogReg. Coronal CNN accuracy ranged from 0.343 to 0.801.
+  - In the focused graphs, the good and bad runs have nearly identical training curves and only diverge on validation, so bad runs come from a hard split, not from training that failed. Axial's worst run (accuracy 0.79, F1 0.49) predicts mostly Normal, which is why runs are ranked by F1 and not accuracy.
